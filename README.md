@@ -1,2 +1,2 @@
 # SSOS
-These are System software and operating system assignment
+These are System software and operating system assignments.
