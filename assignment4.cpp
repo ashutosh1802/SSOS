@@ -1,109 +1,150 @@
 #include <iostream>
-#include <string>
-#include <sstream>
 #include <fstream>
-#include <bits/stdc++.h>
+#include <sstream>
+#include <vector>
+#include <map>
 using namespace std;
 
-int main(){
-    fstream example;
-    fstream output;
+vector<vector<string>> readFile(const string& fileName);
+void createSymTab();
+void generateObjectCode();
+string toHex(int value, int width);
 
-    output.open("ans4.txt",ios::out);
-    example.open("assembly.txt",ios::in);
+map<string, int> symbolTable;
+map<string, string> opcode;
+vector<vector<string>> vec;
+vector<vector<string>> obj;
 
-    unordered_map<string,string> sic;
-    // SICmapping(sic);
-    fstream f;
-    f.open("SIC.txt",ios::in);
-    
-    string s1;
-    while(!f.eof()){
-        getline(f,s1);
-        stringstream ss(s1);
-        string a,b;
+int main() {
+    // Initialize opcode table
+    opcode = {
+        {"LDX", "04"}, {"LDA", "00"}, {"TD", "e0"}, {"JEQ", "30"}, {"RD", "d8"},
+        {"COMP", "28"}, {"STCH", "54"}, {"TIX", "2c"}, {"JLT", "38"}, {"RSUB", "4c"},
+        {"STL", "14"}, {"JSUB", "48"}, {"J", "3c"}, {"STA", "0c"}, {"LDL", "08"},
+        {"LDCH", "50"}, {"WD", "dc"}, {"STX", "10"}
+    };
 
-        ss >> a;
-        ss >> b;
+    string fileName = "file.txt";
+    vec = readFile(fileName);
 
-        sic[a] = b;
-    }
-    f.close();
+    createSymTab();
+    generateObjectCode();
 
-    // Initializing Symbol Table
-    unordered_map<string,int> symbol_table;
-    string s;
-    int loc = -1;
-    while(!example.eof()){
-        getline(example,s);
+    return 0;
+}
 
-        stringstream ss(s);
-        vector<string> line;
-        string word;
-        while(ss >> word) line.push_back(word);
-
-        if(line[0] == "START") {loc = stoi(line[1]); continue;}
-        else if(line[0] == "END") break;
-
-        if(line.size() == 3) symbol_table[line[0]] = loc;
-
-        if(line[1] == "BYTE") loc++;
-        else if(line[1] == "RESB") loc += stoi(line[2]);
-        else loc += 3;
+vector<vector<string>> readFile(const string& fileName) {
+    vector<vector<string>> vec;
+    ifstream file(fileName);
+    if (!file.is_open()) {
+        cerr << "File not found." << endl;
+        exit(1);
     }
 
-
-    example.seekg(0);
-    while(!example.eof()){
-        getline(example,s);
-
-        stringstream ss(s);
-        vector<string> line;
+    string line;
+    while (getline(file, line)) {
+        vec.push_back({});
+        stringstream str(line);
         string word;
-        while(ss >> word) line.push_back(word);
-
-        int i=0;
-        if(line.size() == 3) i++;
-
-        string temp = "";
-        if(line[i] == "START") continue;
-
-        else if(line[i] == "END") break;
-
-        if(line[i] == "RESB"){
-            int x = stoi(line[i+1]);
-            while(x--) temp += "00";
+        while (str >> word) {
+            vec.back().push_back(word);
         }
+    }
 
-        else if(line[i] == "BYTE")
-            temp = line[i+1];
-        
-        else{
-            bool check = false;
+    file.close();
+    return vec;
+}
 
-            while(i<line.size()){
-                string word = line[i];
-                if(sic.find(word) != sic.end())
-                    temp += sic[word] + " ";
+void createSymTab() {
+    int location_pointer = 0;
 
-                else if(symbol_table.find(word) != symbol_table.end())
-                     temp += to_string(symbol_table[word]) + " ";
-                
-                else {
-                    output<<"Error : "<<word<<" symbol not declared "<<endl;
-                    check = true;
-                    break;
-                }
-                i++;
+    for (int i = 1; i < vec.size(); i++) {
+        if (vec[i].size() == 3) {
+            if (vec[i][1] == "END") {
+                symbolTable[vec[i][0]] = location_pointer;
+                break;
             }
 
-            if(check) break;
+            if (vec[i][1] == "RESW" || vec[i][1] == "RESB") {
+                symbolTable[vec[i][0]] = location_pointer;
+                if (vec[i][1] == "RESW") {
+                    location_pointer += stoi(vec[i][2]) * 3;
+                } else {
+                    location_pointer += stoi(vec[i][2]);
+                }
+            } else if (vec[i][1] == "BYTE") {
+                if (vec[i][0] == "EOF") {
+                    symbolTable[vec[i][0]] = location_pointer;
+                    location_pointer += 3;
+                } else {
+                    symbolTable[vec[i][0]] = location_pointer;
+                    location_pointer++;
+                }
+            } else {
+                symbolTable[vec[i][0]] = location_pointer;
+            }
         }
+        location_pointer += 3;
+    }
+}
 
-        output<<temp<<endl;
+void generateObjectCode() {
+    for (int i = 1; i < vec.size(); i++) {
+        vector<string> v;
+
+        if (vec[i].size() == 1) {
+            if (vec[i][0] == "RSUB") {
+                v.push_back("4c0000");
+            }
+        } else if (vec[i].size() == 2) {
+            if (vec[i][0] == "END") {
+                break;
+            }
+
+            string opcodeValue = opcode[vec[i][0]];
+            v.push_back(opcodeValue);
+
+            int symbolValue = symbolTable[vec[i][1]];
+            v.push_back(toHex(symbolValue, 4)); // 4 characters wide
+        } else if (vec[i].size() == 3) {
+            if (vec[i][1] == "END") {
+                break;
+            } else if (vec[i][1] == "RESW" || vec[i][1] == "RESB" || vec[i][1] == "START") {
+                obj.push_back(v);
+                continue;
+            } else if (vec[i][1] == "WORD") {
+                int wordValue = stoi(vec[i][2]);
+                v.push_back(toHex(wordValue, 6)); // 6 characters wide
+            } else if (vec[i][1] == "BYTE") {
+                string byteValue = vec[i][2].substr(2, vec[i][2].length() - 3);
+                v.push_back(byteValue);
+            } else {
+                string opcodeValue = opcode[vec[i][1]];
+                v.push_back(opcodeValue);
+
+                int symbolValue = symbolTable[vec[i][2]];
+                v.push_back(toHex(symbolValue, 4)); // 4 characters wide
+            }
+        }
+        obj.push_back(v);
     }
 
-    output.close();
-    example.close();
-   return 0;
+    // Print object code
+    for (const vector<string>& line : obj) {
+        for (const string& code : line) {
+            cout << code << "  "; // Add spaces between codes
+        }
+        cout << endl;
+    }
+}
+
+string toHex(int value, int width) {
+    stringstream ss;
+    ss << hex << value;
+    string result = ss.str();
+    // Add leading zeros to meet the specified width
+    while (result.length() < width) {
+        result = "0" + result;
+    }
+    return result;
 }
